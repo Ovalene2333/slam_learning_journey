@@ -6,6 +6,12 @@
 
 希望这个项目能为同样走在SLAM学习路上的你提供一份清晰的路线图和宝贵的避坑指南。
 
+## 友链
+
+[【腾讯文档】DX-ROS教程](https://docs.qq.com/markdown/DR0dTc2NmUEZSTERF)
+
+
+
 ## 目录结构
 
 - `SLAM/`：算法原理、LIO 选型、传感器放置与对准实践
