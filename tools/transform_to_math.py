@@ -6,60 +6,67 @@ import textwrap
 def convert_formula_in_file(file_path):
     """
     Opens a file, replaces all indented/non-indented $$...$$ blocks
-    with ```math...```, preserving indentation, and writes back the changes.
+    with a clean, unindented ```math...``` block, ensures there is proper spacing,
+    and writes back the changes.
     """
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
 
-        # 更新正则表达式以捕获三个部分：
-        # 1. ^(\s*): 捕获行首的任意空白字符（即缩进）。必须使用 MULTILINE 模式。
+        # 正则表达式捕获:
+        # 1. ^(\s*): 行首的任意空白字符（缩进）。
         # 2. \$\$: 匹配 $$ 符号。
-        # 3. (.*?): 非贪婪地捕获两个 $$ 之间的所有内容，包括换行符（需要 DOTALL 模式）。
+        # 3. (.*?): 非贪婪地捕获两个 $$ 之间的所有内容。
         # 4. \$\$: 匹配结束的 $$ 符号。
-        # 5. $: 匹配行尾，确保 $$ 后面没有其他字符（可选，但更严谨）。
         pattern = r'^(\s*)\$\$(.*?)\$\$$'
 
-        # 使用 re.DOTALL 使 '.' 匹配换行符，re.MULTILINE 使 '^' 和 '$' 匹配行的开头和结尾
+        # 使用 re.DOTALL 使 '.' 匹配换行符, re.MULTILINE 使 '^' 匹配行的开头
         new_content, num_replacements = re.subn(
             pattern,
-            replace_with_indented_math_block,
+            replace_with_math_block,
             content,
             flags=re.DOTALL | re.MULTILINE
         )
 
         if num_replacements > 0:
             print(f"  -> 找到并转换了 {num_replacements} 个公式块。")
+            
+            # 新增步骤: 清理多余的换行符
+            # 将三个及以上的连续换行符替换为两个，确保公式块上下最多只有一个空行。
+            final_content = re.sub(r'\n{3,}', '\n\n', new_content)
+            
             with open(file_path, 'w', encoding='utf-8') as f:
-                f.write(new_content)
-        
-        return num_replacements > 0
+                f.write(final_content)
+            
+            return True
 
     except Exception as e:
         print(f"  -> 处理文件时出错: {e}")
         return False
+    
+    return False
 
-def replace_with_indented_math_block(match):
+def replace_with_math_block(match):
     """
     This function is called for every match found by re.sub.
-    It formats the replacement string while preserving indentation.
+    It formats the replacement string, removing any original indentation.
     """
-    # group(1) 是行首的缩进
-    indentation = match.group(1)
+    # group(1) 是行首的缩进, 我们将丢弃它以实现去缩进效果。
     
     # group(2) 是 $$ 之间的原始公式内容
     formula_content_raw = match.group(2)
     
-    # 1. textwrap.dedent() 会移除整个代码块的公共前导空白
+    # 1. textwrap.dedent() 移除整个代码块的公共前导空白
     #    这对于处理多行、且内部有缩进的公式至关重要
     dedented_content = textwrap.dedent(formula_content_raw)
     
-    # 2. .strip() 会移除 dedent 后可能残留的、位于开头和结尾的空行
+    # 2. .strip() 移除 dedent 后可能残留的、位于开头和结尾的空行
     cleaned_content = dedented_content.strip()
     
-    # 3. 构建新的代码块，将原始缩进应用到 ```math 的开头和结尾
-    #    公式内容本身则不再需要额外缩进
-    return f"{indentation}```math\n{indentation}{cleaned_content}\n{indentation}```"
+    # 3. 构建新的代码块。我们主动在$$前后各加一个换行符,
+    #    以确保它与上下文文本分离。多余的空行将在之后被统一清理。
+    #    原始的行首缩进 (match.group(1)) 在这里被忽略了。
+    return f"\n$$\n{cleaned_content}\n$$\n"
 
 def process_directory(target_dir):
     """
