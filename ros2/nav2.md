@@ -1,5 +1,7 @@
 # nav2-humble
 
+> 本文档尚未施工完成
+
 ## 基本概念
 
 Nav2 是 ROS2 的导航框架，取代了 ROS1 的 Move Base。它采用高度模块化和可组合的设计理念，通过行为树（Behavior Tree）来编排各种导航任务。

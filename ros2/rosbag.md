@@ -1,8 +1,8 @@
-# ROSBAG
+# ROSBAG 教程
 
-## 从ROS1转换
+## `rosbags`: 轻松实现 ROS1 与 ROS2 的 bag 互转
 
-`rosbags` 是纯 Python 库，能直接读取/写入 ROS1/ROS2 的 bag，并在两者之间高效互转，不依赖任何 ROS 发行版。([GitLab][1])
+在 ROS 1 和 ROS 2 共存的环境中，我们经常需要转换 bag 文件格式。`rosbags` 是一个强大的纯 Python 库，它不依赖任何 ROS 发行版，就能直接读取、写入 ROS1 和 ROS2 的 bag，并高效互转。
 
 **1）安装**
 
@@ -11,78 +11,99 @@ sudo apt install python3-pip
 pip install rosbags
 ```
 
-（官方文档说明：`rosbags` 不依赖 ROS 堆栈，并自带 rosbag1/rosbag2 读写与“高效转换器”。）([GitLab][1])
-
 **2）一行命令完成转换**
 
 ```bash
-# 将 ROS1 的 foo.bag 转成 ROS2（会得到目录 foo/，内部为 rosbag2 存储）
-rosbags-convert --src foo.bag
-
-# 指定输出目录（例如输出到 ros2_bag/）
-rosbags-convert --src foo.bag --dst ros2_bag
+# 示例：从 ROS1 .bag 转换为 ROS2 目录
+rosbags-convert --src foo.bag --dst ros2_bag_directory
 ```
+> 注意,如果要把rosbag2转换回rosbag,只支持ros内置的msg不支持自定义msg
 
-## ROS2 BAG的使用（详细）
+## ROS2 BAG 核心用法 (ros2 bag)
 
-> 适用于 `ros2 bag`（rosbag2）。以下命令在常见 ROS 2 发行版（Foxy→Humble→Iron 等）下通用；个别选项在早期发行版可能缺失。
+本教程将重点介绍 ROS 2 官方工具 `ros2 bag` (rosbag2) 的核心用法。以下命令在 Foxy, Humble, Iron 等主流 ROS 2 发行版中通用（个别高级选项可能在早期版本中缺失）。
 
-### 1）快速了解 & 查看信息
+-----
+
+### 1）快速了解：查看 Bag 信息
+
+在处理一个未知的 bag 文件时，第一步总是查看它的基本信息。
 
 ```bash
-# 查看 bag 基本信息（存储后端、时长、主题、消息数、起止时间等）
 ros2 bag info <bag_dir>
 ```
 
-典型输出中会包含：
+`info` 命令会显示 bag 的关键元数据，帮助你快速了解内容：
 
-* **storage**（默认 `sqlite3`，也可能是 `mcap` 等）
-* **compression**（`zstd`/`lz4` 或 none）
-* **duration / start / end / messages**
-* **topics**（含每个主题的 QoS 记录）
+  * **storage**：存储后端（默认 `sqlite3`，高性能 `mcap` 等）
+  * **compression**：压缩格式（`zstd`/`lz4` 或 none）
+  * **duration / start / end / messages**：时长、起止时间、总消息数
+  * **topics**：包含的主题列表、消息类型及各自的 QoS 配置
 
----
+-----
 
-### 2）录制（record）
+### 2）录制 (record)
+
+录制是 `ros2 bag` 最核心的功能。
+
+#### 基础录制
 
 ```bash
-# 录制全部主题到当前目录，自动生成名称（bag_YYYY_MM_DD-...）
+# 录制全部主题到当前目录，自动生成名称（格式如 bag_YYYY_MM_DD-...）
 ros2 bag record -a
 
-# 指定输出名
+# 指定输出目录名
 ros2 bag record -a -o my_bag
 
-# 只录制指定主题
+# 只录制指定的主题
 ros2 bag record /camera/image_raw /tf /odom -o nav_cam
+```
 
+#### 进阶与性能选项
+
+```bash
 # 包含隐藏主题（以“_”开头，或 /rosout 等）
 ros2 bag record -a --include-hidden-topics -o with_hidden
 
-# 指定存储后端（如 mcap；系统需已安装对应插件）
+# 指定存储后端（mcap 性能通常优于默认的 sqlite3）
 ros2 bag record -a -o my_bag --storage mcap
 
-# 压缩（文件级 or 消息级；常见格式 zstd）
+# 开启压缩（zstd 是推荐格式，file 模式开销较低）
 ros2 bag record -a -o my_bag --compression-mode file --compression-format zstd
+```
 
-# 分段保存（按大小/时长轮转）
-ros2 bag record -a -o split_bag --max-bag-size 1024     # 单段上限 1GB
-ros2 bag record -a -o split_bag --max-bag-duration 60   # 单段上限 60s
+#### 长时间录制 (分段)
 
-# 使用 QoS 覆盖文件（订阅侧，用于“录制时”与发布端 QoS 匹配）
+对于长时间运行的系统，必须进行分段保存，避免单个文件过大导致难以管理或损坏。
+
+```bash
+# 按大小分段（例如每 1GB 一个文件）
+ros2 bag record -a -o split_bag --max-bag-size 1024
+
+# 按时长分段（例如每 60 秒一个文件）
+ros2 bag record -a -o split_bag --max-bag-duration 60
+```
+
+#### 处理 QoS 不匹配
+
+如果录制时发现某些主题录不进数据，通常是 QoS 不兼容。我们可以提供一个 YAML 文件来覆盖录制节点（订阅方）的 QoS 设置。
+
+```bash
+# 使用 QoS 覆盖文件进行录制
 ros2 bag record -a -o my_bag --qos-profile-overrides-path qos_record.yaml
 ```
 
-**示例 QoS 覆盖文件（record/play 通用结构）：`qos_record.yaml`**
+**示例 `qos_record.yaml` (录制/回放通用结构):**
 
 ```yaml
-# 覆盖特定主题的订阅/发布 QoS（常用于解决可靠性/耐久性不匹配导致“录不到/放不出”）
-# 可只写需要的条目，未写的主题沿用默认值
+# 覆盖特定主题的订阅/发布 QoS
+# 未在此处列出的主题将使用默认值
 topics:
   - topic: /camera/image_raw
     qos:
-      reliability: reliable      # reliable | best_effort
+      reliability: reliable       # reliable | best_effort
       durability: transient_local # transient_local | volatile
-      history: keep_last         # keep_last | keep_all
+      history: keep_last
       depth: 10
   - topic: /tf
     qos:
@@ -92,115 +113,145 @@ topics:
       depth: 100
 ```
 
-> 小贴士
+> **录制小贴士**
 >
-> * **录不到消息** 多为 QoS 不匹配：为录制命令加 `--qos-profile-overrides-path`，将订阅侧改成与发布端一致或更宽松。
-> * **大图像/高速话题**：优先选择 `mcap` 存储或开启压缩，并适当增大 `depth`。
-> * **长时间录制**：务必启用**分段**，方便后期管理与拷贝。
+>   * **录不到消息？** 绝大多数情况是 QoS 不匹配。使用 `--qos-profile-overrides-path`，确保录制节点（订阅者）的 QoS 设置与发布端兼容（或更宽松）。
+>   * **大图像/高速话题**：强烈建议使用 `mcap` 存储并开启 `zstd` 压缩，同时可适当增大 `depth`。
+>   * **长时间录制**：务必启用分段 (`--max-bag-size` 或 `--max-bag-duration`)。
 
----
+-----
 
-### 3）回放（play）
+### 3）回放 (play)
+
+录制完成后，我们使用 `play` 命令来复现数据。
+
+#### 基础回放
 
 ```bash
 # 基本回放
 ros2 bag play <bag_dir>
 
-# 循环播放、调整速率
-ros2 bag play <bag_dir> -l        # loop
-ros2 bag play <bag_dir> -r 0.5    # 半速
-ros2 bag play <bag_dir> -r 2.0    # 2 倍速
+# 循环播放
+ros2 bag play <bag_dir> -l
 
-# 仅回放部分主题（白名单）
-ros2 bag play <bag_dir> --topics /tf /odom
+# 调整速率（0.5 倍速 / 2 倍速）
+ros2 bag play <bag_dir> -r 0.5
+ros2 bag play <bag_dir> -r 2.0
+```
 
-# 从偏移处开始（跳过最开始的一段）
-ros2 bag play <bag_dir> --start-offset 10.0   # 从第 10 秒开始
+#### 控制回放内容
 
-# 发布 /clock（仿真时常用；让节点用仿真时间）
+```bash
+# 仅回放指定的主题
+ros2 bag play <bag_dir> --topics /tf /odom 
+
+# 从指定时间偏移处开始（例如跳过前 10 秒）
+ros2 bag play <bag_dir> --start-offset 10.0 
+
+# 开始时暂停,不至于手忙脚乱
+ros2 bag play <bag_dir> --start-pause bag_path
+```
+
+#### 仿真时间回放
+
+在仿真或调试时，我们希望节点使用 bag 中的时间戳，而不是系统当前时间。
+
+```bash
+# 回放时发布 /clock 主题
 ros2 bag play <bag_dir> --clock
-# 注意需要在其他节点参数中设置：use_sim_time=true
+```
 
-# 在回放侧强制 QoS（解决订阅侧收不到的情况）
+**重要**：当使用 `--clock` 时，所有其他需要同步的 ROS 节点在启动时都必须设置参数 `use_sim_time:=true`。
+
+#### 回放中的 QoS 与存储
+
+与录制类似，如果下游节点收不到消息，也可能是 QoS 不匹配（尤其是 `durability`）。
+
+```bash
+# 在回放侧（发布方）强制 QoS
 ros2 bag play <bag_dir> --qos-profile-overrides-path qos_play.yaml
 
-# 使用特定存储后端读取（当 bag 不是 sqlite3 时）
+# 当 bag 不是默认的 sqlite3 时，指定存储后端读取
 ros2 bag play <bag_dir> --storage mcap
 ```
 
-**示例 QoS 覆盖文件（回放侧发布 QoS）：`qos_play.yaml`**
+**示例 `qos_play.yaml` (回放侧发布 QoS):**
 
 ```yaml
 topics:
   - topic: /camera/image_raw
     qos:
       reliability: reliable
-      durability: volatile        # 通常回放发布用 volatile；除非下游需要 transient_local
+      durability: volatile       # 回放时通常用 volatile
       history: keep_last
       depth: 10
   - topic: /tf_static
     qos:
       reliability: reliable
-      durability: transient_local # static 变换常见为 transient_local
+      durability: transient_local # tf_static 这类“静态”话题必须用 transient_local
       history: keep_last
       depth: 1
 ```
 
-> 小贴士
+> **回放小贴士**
 >
-> * 若下游订阅者 QoS 要求“**transient_local**”（尤其 `/tf_static`、某些地图/参数类话题），回放侧也需要相同耐久性，否则对端可能收不到**历史**消息。
-> * 使用 `--clock` 时，确保其他节点启用 `use_sim_time`。
-> * 回放大量图像时，SSD I/O 会显著影响实时性；必要时降低速率或预解压。
+>   * 如果下游订阅者（如 Rviz）的 QoS 要求 `transient_local`（常见于 `/tf_static`、地图等话题），回放侧也必须在 QoS 覆盖文件中指定 `durability: transient_local`，否则对方可能收不到这些“历史”消息。
+>   * 使用 `--clock` 时，切记检查其他节点是否已启用 `use_sim_time`。
 
----
+-----
 
 ### 4）过滤、裁剪与转换
 
+有时我们需要对原始 bag 进行“瘦身”或转换格式。
+
 ```bash
-# 过滤生成新的 bag（按表达式挑选消息；常见做法是按主题或时间窗）
-# 表达式语法取决于发行版；最通用办法是直接白名单主题：
+# 过滤生成新的 bag（例如只保留 /odom 和 /tf）
 ros2 bag filter <src_bag_dir> -o <dst_bag_dir> --topics /odom /tf
 
-# 也可按时间裁剪（部分发行版支持 --start / --duration 等；若无，可通过回放+二次录制实现）
-# 方法A：部分版本
-ros2 bag filter <src> -o <dst> --start 10.0 --duration 60.0
-# 方法B：通用方案（回放窗口+再录）：
-#   1) ros2 bag play <src> --start-offset 10 --clock
-#   2) 同时 ros2 bag record 你需要的主题，持续 60s 后 Ctrl-C 停止
-
-# 存储后端转换（示例：sqlite3 → mcap 或反向；需具备对应插件）
+# 存储后端转换（例如：sqlite3 → mcap）
 ros2 bag convert <src_bag_dir> --output <dst_bag_dir> --storage mcap
-# 若发行版无 convert 子命令，可用“回放 + 再录制 + 指定 --storage”实现等效转换
 ```
 
----
+**按时间裁剪的技巧**:
+
+如果你的 ROS 发行版 `ros2 bag filter` 不支持 `--start` / `--duration` 等参数，可以使用“回放+重录制”的通用方法实现裁剪：
+
+1.  (终端1) `ros2 bag play <src> --start-offset 10.0` (从第 10 秒开始播放)
+2.  (终端2) `ros2 bag record -o <dst> --topics /odom /tf` (立即开始录制需要的主题，在合适的时间 Ctrl-C 停止)
+
+-----
 
 ### 5）压缩与解压
 
+如果录制时忘记压缩，可以后续添加压缩；反之亦然。
+
 ```bash
-# 对已录制 bag 进行压缩（文件级）
+# 对已录制的 bag 进行压缩（文件级，zstd 推荐）
 ros2 bag compress <bag_dir> --compression-format zstd --compression-mode file
 
 # 解压
 ros2 bag decompress <bag_dir>
 ```
 
-> **选择模式**
+> **压缩模式选择**
 >
-> * `file`：整体文件压缩，CPU 开销低，读写快。
-> * `message`：逐消息压缩，压缩比常更高，但占用更多 CPU。
+>   * `file`：整体文件压缩。CPU 开销低，读写快，推荐。
+>   * `message`：逐条消息压缩。压缩比可能更高，但 CPU 占用也更高。
 
----
+-----
 
 ### 6）索引修复与诊断
 
-```bash
-# 目录被意外中断或拷贝损坏时，尝试重建索引
-ros2 bag reindex <bag_dir>
+当 bag 文件损坏、拷贝中断或无法读取时，可以尝试重建索引。有时候你录制了log但是突然断电了就有可能遇到这种情况。
 
-# 常见排错思路
-# 1) ros2 bag info 查看是否识别到主题/消息数
-# 2) 检查 QoS：录制/回放两端是否匹配（reliable/best_effort，durability 等）
-# 3) storage 插件是否齐全（mcap/sqlite3）
-# 4) 权限/磁盘空间/路径大小写（Linux/Windows）问题
+```bash
+# 尝试重建索引
+ros2 bag reindex <bag_dir>
 ```
+
+**常见排错思路**:
+
+1.  使用 `ros2 bag info` 检查是否能识别到主题/消息数。
+2.  **QoS 问题**：检查录制/回放两端的 `reliability` 和 `durability` 是否匹配。
+3.  **Storage 问题**：是否缺少 `mcap` (或 `sqlite3`) 插件？
+4.  **环境问题**：检查文件权限、磁盘空间、路径拼写等。
