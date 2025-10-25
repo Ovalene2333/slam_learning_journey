@@ -8,9 +8,7 @@
 
 ## 友链
 
-[【腾讯文档】DX-ROS教程](https://docs.qq.com/markdown/DR0dTc2NmUEZSTERF)
-
-
+~~内部培训文档不再提供~~
 
 ## 目录结构
 
